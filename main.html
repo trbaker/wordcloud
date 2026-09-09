@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Survey word cloud</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..800;1,9..144,300..800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #0b0b10;
+    --ink-2: #16161f;
+    --grid: rgba(255, 255, 255, 0.045);
+    --paper: #ecebf1;
+    --muted: #9b9ab0;
+    --line: rgba(255, 255, 255, 0.16);
+    --accent: #ff7a1a;
+    --accent-ink: #0b0b10;
+    --live: #8cff3f;
+    --err: #ff5252;
+    --new: #fff36b;
+    --focus: #ffd166;
+    --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+    --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--ink);
+    color: var(--paper);
+    font-family: var(--font-ui);
+    font-size: 15px;
+    line-height: 1.5;
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 48px 48px;
+  }
+  a { color: var(--accent); }
+
+  .app { display: grid; grid-template-rows: auto 1fr; min-height: 100vh; }
+
+  header {
+    display: flex; align-items: flex-end; justify-content: space-between; gap: 1.5rem;
+    padding: 1.4rem 1.8rem 1rem; border-bottom: 1px solid var(--line); flex-wrap: wrap;
+  }
+  h1 {
+    font-family: var(--font-display); font-weight: 400; font-variation-settings: "opsz" 144;
+    font-size: clamp(1.6rem, 3.2vw, 2.4rem); letter-spacing: -0.01em; line-height: 1.1; margin: 0 0 0.35rem;
+  }
+  .status { color: var(--muted); font-size: 0.9rem; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+  .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--live); animation: pulse 2s infinite; }
+  .pulse.off { background: var(--muted); animation: none; box-shadow: none; }
+  .pulse.err { background: var(--err); animation: none; box-shadow: none; }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(140, 255, 63, 0.55); }
+    70%  { box-shadow: 0 0 0 8px rgba(140, 255, 63, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(140, 255, 63, 0); }
+  }
+  .delta { color: var(--new); }
+
+  .actions { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+  button, select, input[type="text"], input[type="number"], input[type="url"] {
+    font: inherit; color: var(--paper); background: var(--ink-2);
+    border: 1px solid var(--line); border-radius: 6px; padding: 0.45rem 0.75rem; min-width: 0;
+  }
+  select:disabled { opacity: 0.5; }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--muted); }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  button.primary:hover { filter: brightness(1.08); }
+  :is(button, select, input):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; min-height: 0; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+
+  .stage { position: relative; min-height: 420px; height: calc(100vh - 110px); background: #000; }
+  @media (max-width: 860px) { .stage { height: 62vh; } }
+  canvas#cloud { display: block; width: 100%; height: 100%; cursor: default; background: #000; }
+  .empty { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: var(--muted); padding: 2rem; pointer-events: none; }
+  .empty.hidden { display: none; }
+  .empty .big { font-family: var(--font-display); font-size: 1.6rem; color: var(--paper); margin-bottom: 0.4rem; }
+  .tooltip {
+    position: absolute; pointer-events: none; background: var(--paper); color: var(--ink);
+    padding: 0.25rem 0.55rem; border-radius: 4px; font-size: 0.85rem;
+    transform: translate(-50%, calc(-100% - 10px)); white-space: nowrap; opacity: 0; transition: opacity 120ms;
+  }
+  .tooltip.show { opacity: 1; }
+
+  aside { border-left: 1px solid var(--line); padding: 1.2rem 1.4rem 2rem; overflow: auto; background: rgba(11, 11, 16, 0.6); }
+  @media (max-width: 860px) { aside { border-left: 0; border-top: 1px solid var(--line); } }
+  aside h2 { font-family: var(--font-display); font-weight: 500; font-size: 1.05rem; margin: 1.4rem 0 0.6rem; }
+  aside h2:first-child { margin-top: 0; }
+  .field { display: grid; gap: 0.3rem; margin-bottom: 0.8rem; }
+  .field label { color: var(--muted); font-size: 0.85rem; }
+  .row { display: flex; gap: 0.5rem; align-items: center; }
+  .row > * { flex: 1; }
+  .row > button { flex: 0 0 auto; }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .seg button { flex: 1; border: 0; border-radius: 0; background: transparent; padding: 0.4rem 0.5rem; }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  .swatches { display: flex; gap: 4px; margin-top: 0.35rem; }
+  .swatches span { width: 18px; height: 10px; border-radius: 2px; }
+
+  .entries { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.7rem; }
+  .entry { border-left: 2px solid var(--line); padding: 0.1rem 0 0.1rem 0.75rem; }
+  .entry .place { font-family: var(--font-display); font-size: 1.05rem; overflow-wrap: anywhere; }
+  .entry mark { background: color-mix(in srgb, var(--accent) 35%, transparent); color: inherit; padding: 0 0.1em; border-radius: 2px; }
+  .entry .when { color: var(--muted); font-size: 0.75rem; margin-top: 0.25rem; }
+  .selection { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
+  .selection button { padding: 0.15rem 0.5rem; font-size: 0.8rem; }
+  .note { color: var(--muted); font-size: 0.85rem; }
+  .note.err { color: var(--err); }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 1.5rem; transform: translateX(-50%) translateY(20px);
+    background: var(--paper); color: var(--ink); padding: 0.55rem 0.9rem; border-radius: 6px;
+    font-size: 0.9rem; opacity: 0; transition: opacity 180ms, transform 180ms; pointer-events: none;
+    max-width: min(90vw, 40rem); text-align: center; overflow-wrap: anywhere;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* Shared view: cloud only */
+  body.view .actions, body.view aside, body.view h1 { display: none; }
+  body.view header { padding: 0.7rem 1.2rem; align-items: center; }
+  body.view main { grid-template-columns: 1fr; }
+  body.view .stage { height: calc(100vh - 44px); }
+  body.view canvas#cloud { cursor: default !important; }
+
+  @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } .toast { transition: none; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div>
+      <h1>Survey word cloud</h1>
+      <div class="status">
+        <span class="pulse off" id="pulse" aria-hidden="true"></span>
+        <span id="statusText">Loading…</span>
+        <span class="delta" id="delta"></span>
+      </div>
+    </div>
+    <div class="actions">
+      <label class="note" for="interval">Refresh</label>
+      <select id="interval" aria-label="Auto-refresh interval">
+        <option value="0">manually</option>
+        <option value="15000">every 15 s</option>
+        <option value="60000" selected>every minute</option>
+        <option value="300000">every 5 min</option>
+      </select>
+      <button class="primary" id="refresh">Refresh now</button>
+      <button id="share" title="Copy a link that opens this cloud, with these settings, and nothing else">Share</button>
+      <button id="download" title="Save the cloud as a PNG">Save image</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="stage" aria-label="Word cloud">
+      <canvas id="cloud" role="img" aria-label="Word cloud of survey responses"></canvas>
+      <div class="empty hidden" id="empty">
+        <div>
+          <div class="big" id="emptyTitle">Nothing to show yet</div>
+          <div id="emptyBody">Responses will appear here as they come in.</div>
+        </div>
+      </div>
+      <div class="tooltip" id="tooltip"></div>
+    </section>
+
+    <aside>
+      <h2>Where the words come from</h2>
+      <div class="field">
+        <label for="svc">Feature service URL</label>
+        <div class="row">
+          <input type="url" id="svc" placeholder="https://…/FeatureServer or …/FeatureServer/0" spellcheck="false">
+          <button id="loadSvc">Load</button>
+        </div>
+        <div class="note" id="svcNote">Paste a FeatureServer or MapServer URL, with or without a layer number.</div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="layerSel">Layer</label>
+          <select id="layerSel" disabled><option>—</option></select>
+        </div>
+        <div class="field">
+          <label for="fieldSel">Text field</label>
+          <select id="fieldSel" disabled><option>—</option></select>
+        </div>
+      </div>
+
+      <h2>How the words look</h2>
+      <div class="field">
+        <label for="themeSel">Color theme</label>
+        <select id="themeSel"></select>
+        <div class="swatches" id="swatches" aria-hidden="true"></div>
+      </div>
+
+      <h2>What to count</h2>
+      <div class="field">
+        <label>Count as</label>
+        <div class="seg" role="group" aria-label="Token mode">
+          <button data-mode="words" aria-pressed="true">Single words</button>
+          <button data-mode="phrases" aria-pressed="false">Whole values</button>
+        </div>
+        <div class="note">Single words counts each word in a response once. Whole values counts the full response as one entry.</div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="minLen">Shortest word</label>
+          <input type="number" id="minLen" min="1" max="10" value="3">
+        </div>
+        <div class="field">
+          <label for="maxWords">Words shown</label>
+          <input type="number" id="maxWords" min="10" max="400" step="10" value="120">
+        </div>
+      </div>
+      <div class="field">
+        <label for="stop">Also hide these words (comma-separated)</label>
+        <input type="text" id="stop" placeholder="e.g. city, state, county">
+      </div>
+
+      <h2 class="selection"><span id="listTitle">Latest responses</span><button id="clearSel" hidden>Show all</button></h2>
+      <ul class="entries" id="entries"></ul>
+    </aside>
+  </main>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+/* ---------- Defaults ---------- */
+const DEFAULT_SERVICE = "https://services.arcgis.com/BG6nSlhZSAWtExvp/arcgis/rest/services/survey123_60f305b4f73c4317a479dd4ecb18a097_results/FeatureServer/0";
+const DEFAULT_FIELD = "place";
+const PAGE_SIZE = 1000;
+
+const THEMES = {
+  halloween: { label: "Halloween", colors: ["#ff7a1a", "#ffb547", "#b366ff", "#8cff3f", "#e8e3f5", "#ff3b3b"], fresh: "#fff36b" },
+  christmas: { label: "Christmas", colors: ["#e63946", "#2fa84f", "#ffffff", "#ffd700", "#a8dadc", "#c1121f"], fresh: "#fff2a8" },
+  winter:    { label: "Winter",    colors: ["#a8dcff", "#ffffff", "#6fb7ff", "#cfd8e3", "#3d8bff", "#b8e1ff"], fresh: "#e0f7ff" },
+  spring:    { label: "Spring",    colors: ["#ff8fab", "#8ed081", "#ffe066", "#c8b6ff", "#ffffff", "#5fd3bc"], fresh: "#fff9c4" },
+  summer:    { label: "Summer",    colors: ["#ffd60a", "#ff6b35", "#00b4d8", "#06d6a0", "#ffffff", "#f72585"], fresh: "#fffcae" },
+  fall:      { label: "Fall",      colors: ["#e8871e", "#d1495b", "#f4c95d", "#b5532d", "#efe6d5", "#a3b18a"], fresh: "#ffe8a3" },
+  blues:     { label: "Blues",     colors: ["#48cae4", "#0096c7", "#90e0ef", "#4361ee", "#caf0f8", "#0077b6"], fresh: "#ffffff" },
+  neon:      { label: "Neon",      colors: ["#39ff14", "#ff10f0", "#00f0ff", "#ffff00", "#ff5e00", "#ffffff"], fresh: "#ffffff" },
+  mono:      { label: "Monochrome",colors: ["#ffffff", "#d9d9d9", "#b3b3b3", "#f2f2f2", "#8c8c8c", "#e6e6e6"], fresh: "#ffd166" }
+};
+const DEFAULT_STOPWORDS = new Set(("a an and are as at be because been but by can could did do does for from had has have he her his how i if in into is it its just me my no not of on or our so than that the their them then there these they this to too us was we were what when where which who why will with would you your it's i'm don't").split(" "));
+
+/* ---------- State ---------- */
+const state = {
+  root: null, layerId: null, layers: [],
+  field: null, idField: "objectid", dateField: null,
+  theme: "halloween",
+  features: [],
+  mode: "words", minLen: 3, maxWords: 120, extraStop: [],
+  counts: new Map(), prevCounts: null, placed: [], selected: null,
+  timer: null, lastFetch: null, anim: null, viewOnly: false
+};
+
+/* ---------- DOM ---------- */
+const $ = (s) => document.querySelector(s);
+const canvas = $("#cloud"), ctx = canvas.getContext("2d");
+const tooltip = $("#tooltip"), statusText = $("#statusText"), pulse = $("#pulse"), delta = $("#delta");
+const entriesEl = $("#entries"), listTitle = $("#listTitle"), clearSel = $("#clearSel");
+const emptyEl = $("#empty"), emptyTitle = $("#emptyTitle"), emptyBody = $("#emptyBody");
+const toast = $("#toast"), svcInput = $("#svc"), svcNote = $("#svcNote");
+const layerSel = $("#layerSel"), fieldSel = $("#fieldSel"), themeSel = $("#themeSel");
+
+/* ---------- Themes ---------- */
+for (const [key, t] of Object.entries(THEMES)) themeSel.add(new Option(t.label, key));
+function applyTheme(key) {
+  if (!THEMES[key]) key = "halloween";
+  state.theme = key;
+  themeSel.value = key;
+  const t = THEMES[key];
+  document.documentElement.style.setProperty("--accent", t.colors[0]);
+  document.documentElement.style.setProperty("--new", t.fresh);
+  $("#swatches").innerHTML = t.colors.map(c => `<span style="background:${c}"></span>`).join("");
+  if (state.placed.length) {
+    state.placed.forEach((p, i) => { p.color = p.isNew ? t.fresh : t.colors[i % t.colors.length]; });
+    drawWords(canvas.clientWidth, canvas.clientHeight, 1);
+  }
+}
+themeSel.addEventListener("change", () => applyTheme(themeSel.value));
+
+/* ---------- Service URL handling ---------- */
+function parseServiceUrl(raw) {
+  let s = (raw || "").trim().replace(/[?#].*$/, "").replace(/\/+$/, "");
+  const m = s.match(/^(https?:\/\/.+?\/(?:FeatureServer|MapServer))(?:\/(\d+))?$/i);
+  if (!m) return null;
+  return { root: m[1], layerId: m[2] != null ? Number(m[2]) : null };
+}
+async function getJson(url) {
+  const res = await fetch(url + (url.includes("?") ? "&" : "?") + "f=json");
+  if (!res.ok) throw new Error(`Service replied ${res.status}`);
+  const json = await res.json();
+  if (json.error) throw new Error(json.error.message || "Request failed");
+  return json;
+}
+
+async function loadService(raw, wantLayer = null, wantField = null) {
+  const parsed = parseServiceUrl(raw);
+  svcNote.className = "note";
+  if (!parsed) {
+    svcNote.textContent = "That doesn’t look like an ArcGIS service URL. It should end in /FeatureServer, /MapServer, or a layer number.";
+    svcNote.className = "note err";
+    return;
+  }
+  svcNote.textContent = "Reading the service…";
+  layerSel.disabled = fieldSel.disabled = true;
+  try {
+    const rootJson = await getJson(parsed.root);
+    const layers = [...(rootJson.layers || []), ...(rootJson.tables || [])].map(l => ({ id: l.id, name: l.name }));
+    if (!layers.length) throw new Error("The service lists no layers or tables");
+    state.root = parsed.root; state.layers = layers;
+    layerSel.innerHTML = "";
+    for (const l of layers) layerSel.add(new Option(`${l.name} (${l.id})`, String(l.id)));
+    const target = [wantLayer, parsed.layerId].find(v => v != null && layers.some(l => l.id === Number(v)));
+    layerSel.value = String(target != null ? target : layers[0].id);
+    layerSel.disabled = false;
+    svcNote.textContent = rootJson.serviceDescription || "Service loaded.";
+    await loadLayer(Number(layerSel.value), wantField);
+  } catch (err) {
+    svcNote.textContent = "Couldn’t read the service: " + err.message;
+    svcNote.className = "note err";
+    setStatus("error", 0, err.message);
+  }
+}
+
+async function loadLayer(layerId, wantField = null) {
+  fieldSel.disabled = true;
+  fieldSel.innerHTML = "<option>Reading fields…</option>";
+  const info = await getJson(`${state.root}/${layerId}`);
+  const fields = info.fields || [];
+  const textFields = fields.filter(f => f.type === "esriFieldTypeString");
+  if (!textFields.length) throw new Error("This layer has no text fields to build a cloud from");
+  state.layerId = layerId;
+  state.idField = info.objectIdField || (fields.find(f => f.type === "esriFieldTypeOID") || {}).name || "objectid";
+  const dates = fields.filter(f => f.type === "esriFieldTypeDate");
+  state.dateField = (dates.find(f => /creation/i.test(f.name)) || dates.find(f => /edit/i.test(f.name)) || dates[0] || {}).name || null;
+
+  fieldSel.innerHTML = "";
+  for (const f of textFields) {
+    const label = f.alias && f.alias !== f.name ? `${f.alias} (${f.name})` : f.name;
+    fieldSel.add(new Option(label, f.name));
+  }
+  const pick = [wantField, state.field, DEFAULT_FIELD].find(n => n && textFields.some(f => f.name === n)) || textFields[0].name;
+  fieldSel.value = pick;
+  state.field = pick;
+  fieldSel.disabled = false;
+  state.features = []; state.prevCounts = null; state.selected = null;
+  await refresh();
+}
+
+layerSel.addEventListener("change", async () => {
+  try { await loadLayer(Number(layerSel.value)); }
+  catch (err) { svcNote.textContent = "Couldn’t read the layer: " + err.message; svcNote.className = "note err"; }
+});
+fieldSel.addEventListener("change", () => {
+  state.field = fieldSel.value;
+  state.features = []; state.prevCounts = null; state.selected = null;
+  refresh();
+});
+$("#loadSvc").addEventListener("click", () => loadService(svcInput.value));
+svcInput.addEventListener("keydown", (e) => { if (e.key === "Enter") loadService(svcInput.value); });
+
+/* ---------- URL parameters (share links) ---------- */
+function readParams() {
+  const q = new URLSearchParams(location.search);
+  if (q.get("mode") === "phrases" || q.get("mode") === "words") {
+    state.mode = q.get("mode");
+    document.querySelectorAll("[data-mode]").forEach(x => x.setAttribute("aria-pressed", x.dataset.mode === state.mode));
+  }
+  if (q.has("min")) { state.minLen = Math.max(1, Number(q.get("min")) || 3); $("#minLen").value = state.minLen; }
+  if (q.has("max")) { state.maxWords = Math.max(10, Number(q.get("max")) || 120); $("#maxWords").value = state.maxWords; }
+  if (q.has("hide")) { $("#stop").value = q.get("hide"); state.extraStop = q.get("hide").toLowerCase().split(",").map(s => s.trim()).filter(Boolean); }
+  if (q.has("refresh")) {
+    const sel = $("#interval");
+    if ([...sel.options].some(o => o.value === q.get("refresh"))) sel.value = q.get("refresh");
+  }
+  if (q.get("view") === "1") { state.viewOnly = true; document.body.classList.add("view"); }
+  applyTheme(q.get("theme") || "halloween");
+  return {
+    svc: q.get("svc") || DEFAULT_SERVICE,
+    layer: q.has("layer") ? Number(q.get("layer")) : null,
+    field: q.get("field") || null
+  };
+}
+
+function buildShareUrl() {
+  const q = new URLSearchParams();
+  q.set("view", "1");
+  q.set("svc", `${state.root}/${state.layerId}`);
+  q.set("field", state.field);
+  q.set("theme", state.theme);
+  q.set("mode", state.mode);
+  q.set("min", String(state.minLen));
+  q.set("max", String(state.maxWords));
+  if (state.extraStop.length) q.set("hide", state.extraStop.join(","));
+  q.set("refresh", $("#interval").value);
+  return `${location.origin}${location.pathname}?${q}`;
+}
+
+function showToast(msg) {
+  toast.textContent = msg;
+  toast.classList.add("show");
+  clearTimeout(showToast.t);
+  showToast.t = setTimeout(() => toast.classList.remove("show"), 2800);
+}
+$("#share").addEventListener("click", async () => {
+  if (!state.root) { showToast("Load a service first."); return; }
+  const url = buildShareUrl();
+  const ok = await tryCopy(url);
+  if (location.protocol === "file:") showToast("Link copied, but share links only work once this page is hosted on a web server.");
+  else showToast(ok ? "Link copied. It opens the cloud with these settings and no controls." : url);
+});
+async function tryCopy(text) {
+  try { await navigator.clipboard.writeText(text); return true; }
+  catch { window.prompt("Copy this link:", text); return false; }
+}
+
+/* ---------- Fetching ---------- */
+async function fetchAll() {
+  const out = [];
+  let offset = 0;
+  const outFields = [state.idField, state.field, state.dateField].filter(Boolean).join(",");
+  for (;;) {
+    const params = new URLSearchParams({
+      where: "1=1", outFields, returnGeometry: "false",
+      orderByFields: state.idField + " ASC",
+      resultOffset: String(offset), resultRecordCount: String(PAGE_SIZE), f: "json"
+    });
+    const res = await fetch(`${state.root}/${state.layerId}/query?${params}`);
+    if (!res.ok) throw new Error(`Service replied ${res.status}`);
+    const json = await res.json();
+    if (json.error) throw new Error(json.error.message || "Query failed");
+    const feats = (json.features || []).map(f => f.attributes);
+    out.push(...feats);
+    if (!json.exceededTransferLimit || feats.length === 0) break;
+    offset += feats.length;
+  }
+  return out;
+}
+
+async function refresh() {
+  if (!state.root || state.layerId == null || !state.field) return;
+  setStatus("loading");
+  try {
+    const feats = await fetchAll();
+    const added = state.features.length ? feats.length - state.features.length : 0;
+    state.features = feats;
+    state.lastFetch = new Date();
+    setStatus("ok", added);
+    recompute();
+  } catch (err) {
+    setStatus("error", 0, err.message);
+    if (!state.features.length) showEmpty("Couldn’t reach the service", `${err.message}. Check that it’s shared publicly and that you’re online, then refresh.`);
+  }
+}
+
+function setStatus(kind, added = 0, msg = "") {
+  const live = Number($("#interval").value) > 0;
+  pulse.className = "pulse " + (kind === "error" ? "err" : (live ? "" : "off"));
+  if (kind === "loading") { statusText.textContent = state.features.length ? "Checking for new responses…" : "Loading responses…"; return; }
+  if (kind === "error") { statusText.textContent = "Couldn’t update: " + msg; return; }
+  const n = state.features.length;
+  const t = state.lastFetch.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  statusText.textContent = `${n} response${n === 1 ? "" : "s"} · updated ${t}${live ? " · live" : ""}`;
+  delta.textContent = added > 0 ? `+${added} since last check` : "";
+}
+
+/* ---------- Tokenizing ---------- */
+function normalizePhrase(s) { return s.trim().replace(/\s+/g, " ").replace(/[.\s,;]+$/g, ""); }
+function tokenizeWords(s) {
+  return s.toLowerCase().replace(/[’]/g, "'")
+    .split(/[^a-z0-9'\u00c0-\u024f-]+/i)
+    .map(w => w.replace(/^['-]+|['-]+$/g, ""))
+    .filter(Boolean);
+}
+function textOf(rec) { const v = rec[state.field]; return v == null ? "" : String(v); }
+
+function recompute() {
+  const stop = new Set([...DEFAULT_STOPWORDS, ...state.extraStop]);
+  const counts = new Map();
+  for (const rec of state.features) {
+    const text = textOf(rec);
+    if (!text.trim()) continue;
+    const seen = new Set();
+    if (state.mode === "phrases") seen.add(normalizePhrase(text));
+    else for (const w of tokenizeWords(text)) if (w.length >= state.minLen && !stop.has(w)) seen.add(w);
+    for (const t of seen) counts.set(t, (counts.get(t) || 0) + 1);
+  }
+  state.counts = counts;
+  layoutAndDraw();
+  renderEntries();
+  state.prevCounts = counts;
+}
+
+/* ---------- Layout (Archimedean spiral, rect collision) ---------- */
+function layoutAndDraw() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const W = canvas.clientWidth, H = canvas.clientHeight;
+  canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  const list = [...state.counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, state.maxWords);
+  if (!list.length) {
+    state.placed = [];
+    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+    if (state.features.length) showEmpty("Nothing to show yet", "Every word was filtered out. Lower the shortest-word setting, clear the hidden-words list, or pick another field.");
+    else showEmpty("Nothing to show yet", "Responses will appear here as they come in.");
+    return;
+  }
+  emptyEl.classList.add("hidden");
+
+  const theme = THEMES[state.theme];
+  const max = list[0][1], min = list[list.length - 1][1];
+  const area = W * H;
+  const maxFont = Math.max(28, Math.min(H * 0.22, Math.sqrt(area) / 6));
+  const minFont = Math.max(11, maxFont * 0.16);
+  const scale = (c) => min === max ? maxFont * 0.7 : minFont + (maxFont - minFont) * Math.sqrt((c - min) / (max - min));
+  const family = getComputedStyle(document.documentElement).getPropertyValue("--font-display");
+
+  const placed = [];
+  const pad = 3;
+  const overlaps = (r) => {
+    if (r.x < 0 || r.y < 0 || r.x + r.w > W || r.y + r.h > H) return true;
+    for (const p of placed) {
+      if (r.x < p.x + p.w + pad && r.x + r.w + pad > p.x && r.y < p.y + p.h + pad && r.y + r.h + pad > p.y) return true;
+    }
+    return false;
+  };
+  let seed = 7;
+  const rand = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+
+  list.forEach(([text, count], i) => {
+    const size = scale(count);
+    ctx.font = `500 ${size}px ${family}`;
+    const tw = ctx.measureText(text).width, th = size * 1.05;
+    const rotate = i > 0 && text.length <= 12 && rand() < 0.22;
+    const w = rotate ? th : tw, h = rotate ? tw : th;
+    const cx = W / 2, cy = H / 2, a0 = rand() * Math.PI * 2;
+    let found = null;
+    for (let t = 0; t < 4000; t++) {
+      const r = 2.2 * Math.sqrt(t) * 1.6, ang = a0 + t * 0.35;
+      const rect = { x: cx + r * Math.cos(ang) * (W / H) - w / 2, y: cy + r * Math.sin(ang) - h / 2, w, h };
+      if (!overlaps(rect)) { found = rect; break; }
+    }
+    if (!found) return;
+    const isNew = !!(state.prevCounts && state.prevCounts.size > 0 && (state.prevCounts.get(text) || 0) < count);
+    placed.push({ ...found, text, count, size, rotate, isNew, color: isNew ? theme.fresh : theme.colors[i % theme.colors.length] });
+  });
+
+  state.placed = placed;
+  animateDraw(W, H);
+}
+
+function drawWords(W, H, progress = 1) {
+  ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+  const family = getComputedStyle(document.documentElement).getPropertyValue("--font-display");
+  const n = state.placed.length;
+  state.placed.forEach((p, i) => {
+    const t = Math.min(1, Math.max(0, (progress * (n + 6) - i) / 6));
+    if (t <= 0) return;
+    ctx.save();
+    ctx.globalAlpha = t;
+    const dim = state.selected && state.selected !== p.text;
+    ctx.fillStyle = dim ? "rgba(255,255,255,0.18)" : p.color;
+    ctx.font = `500 ${p.size}px ${family}`;
+    ctx.textBaseline = "middle"; ctx.textAlign = "center";
+    ctx.translate(p.x + p.w / 2, p.y + p.h / 2);
+    if (p.rotate) ctx.rotate(-Math.PI / 2);
+    ctx.fillText(p.text, 0, 0);
+    ctx.restore();
+  });
+}
+function animateDraw(W, H) {
+  if (state.anim) cancelAnimationFrame(state.anim);
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { drawWords(W, H, 1); return; }
+  const start = performance.now(), dur = 900;
+  const step = (now) => {
+    const p = Math.min(1, (now - start) / dur);
+    drawWords(W, H, p);
+    if (p < 1) state.anim = requestAnimationFrame(step);
+  };
+  state.anim = requestAnimationFrame(step);
+}
+function showEmpty(title, body) {
+  emptyTitle.textContent = title; emptyBody.textContent = body;
+  emptyEl.classList.remove("hidden");
+}
+
+/* ---------- Hit testing ---------- */
+function hitAt(evt) {
+  const r = canvas.getBoundingClientRect();
+  const x = evt.clientX - r.left, y = evt.clientY - r.top;
+  return state.placed.find(p => x >= p.x && x <= p.x + p.w && y >= p.y && y <= p.y + p.h) || null;
+}
+canvas.addEventListener("mousemove", (e) => {
+  const hit = hitAt(e);
+  canvas.style.cursor = hit && !state.viewOnly ? "pointer" : "default";
+  if (hit) {
+    tooltip.textContent = `${hit.text} — ${hit.count} response${hit.count === 1 ? "" : "s"}${hit.isNew ? " · new" : ""}`;
+    tooltip.style.left = (hit.x + hit.w / 2) + "px";
+    tooltip.style.top = hit.y + "px";
+    tooltip.classList.add("show");
+  } else tooltip.classList.remove("show");
+});
+canvas.addEventListener("mouseleave", () => tooltip.classList.remove("show"));
+canvas.addEventListener("click", (e) => {
+  if (state.viewOnly) return;
+  const hit = hitAt(e);
+  state.selected = hit ? (state.selected === hit.text ? null : hit.text) : null;
+  drawWords(canvas.clientWidth, canvas.clientHeight, 1);
+  renderEntries();
+});
+
+/* ---------- Entries list ---------- */
+function matches(rec, token) {
+  const text = textOf(rec);
+  if (state.mode === "phrases") return normalizePhrase(text) === token;
+  return tokenizeWords(text).includes(token.toLowerCase());
+}
+function escapeHtml(s) { return s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+function highlight(text, token) {
+  if (!token) return escapeHtml(text);
+  const esc = token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return escapeHtml(text).replace(new RegExp(`(${esc})`, "ig"), "<mark>$1</mark>");
+}
+function renderEntries() {
+  if (state.viewOnly) return;
+  const sel = state.selected, df = state.dateField;
+  let recs = [...state.features];
+  if (df) recs.sort((a, b) => (b[df] || 0) - (a[df] || 0)); else recs.reverse();
+  if (sel) recs = recs.filter(r => matches(r, sel)); else recs = recs.slice(0, 8);
+  listTitle.textContent = sel ? `“${sel}” · ${recs.length} response${recs.length === 1 ? "" : "s"}` : "Latest responses";
+  clearSel.hidden = !sel;
+  entriesEl.innerHTML = recs.map(r => {
+    const text = textOf(r);
+    const when = df && r[df] ? new Date(r[df]).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }) : "";
+    return `<li class="entry"><div class="place">${highlight(text || "(empty)", sel)}</div>${when ? `<div class="when">${when}</div>` : ""}</li>`;
+  }).join("") || `<li class="note">No responses match.</li>`;
+}
+clearSel.addEventListener("click", () => { state.selected = null; drawWords(canvas.clientWidth, canvas.clientHeight, 1); renderEntries(); });
+
+/* ---------- Other controls ---------- */
+document.querySelectorAll("[data-mode]").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll("[data-mode]").forEach(x => x.setAttribute("aria-pressed", x === b));
+  state.mode = b.dataset.mode; state.selected = null; recompute();
+}));
+$("#minLen").addEventListener("change", (e) => { state.minLen = Math.max(1, Number(e.target.value) || 1); recompute(); });
+$("#maxWords").addEventListener("change", (e) => { state.maxWords = Math.max(10, Number(e.target.value) || 120); recompute(); });
+let stopTimer;
+$("#stop").addEventListener("input", (e) => {
+  clearTimeout(stopTimer);
+  stopTimer = setTimeout(() => {
+    state.extraStop = e.target.value.toLowerCase().split(",").map(s => s.trim()).filter(Boolean);
+    recompute();
+  }, 350);
+});
+$("#refresh").addEventListener("click", refresh);
+$("#interval").addEventListener("change", scheduleRefresh);
+$("#download").addEventListener("click", () => {
+  const a = document.createElement("a");
+  a.download = "wordcloud.png";
+  a.href = canvas.toDataURL("image/png");
+  a.click();
+});
+function scheduleRefresh() {
+  clearInterval(state.timer);
+  const ms = Number($("#interval").value);
+  if (ms > 0) state.timer = setInterval(refresh, ms);
+  if (state.lastFetch) setStatus("ok");
+}
+let resizeTimer;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { const pc = state.prevCounts; state.prevCounts = null; layoutAndDraw(); state.prevCounts = pc; }, 150);
+});
+document.addEventListener("visibilitychange", () => { if (!document.hidden && Number($("#interval").value) > 0) refresh(); });
+
+/* ---------- Go ---------- */
+const startup = readParams();
+svcInput.value = startup.svc;
+document.fonts.ready.then(async () => {
+  await loadService(startup.svc, startup.layer, startup.field);
+  scheduleRefresh();
+});
+</script>
+</body>
+</html>
