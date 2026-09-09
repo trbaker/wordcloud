@@ -96,7 +96,7 @@
 
   .stage { position: relative; min-height: 420px; height: calc(100vh - 110px); }
   @media (max-width: 860px) { .stage { height: 62vh; } }
-  canvas#cloud { display: block; width: 100%; height: 100%; cursor: default; }
+  canvas#cloud { display: block; width: 100%; height: 100%; cursor: default; background: #000; }
   .empty {
     position: absolute; inset: 0;
     display: grid; place-items: center;
@@ -150,9 +150,11 @@
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
   /* Shared view: cloud only */
-  body.view .actions, body.view aside { display: none; }
+  body.view .actions, body.view aside, body.view h1 { display: none; }
+  body.view header { padding: 0.7rem 1.2rem; align-items: center; }
+  body.view .status { margin: 0; }
   body.view main { grid-template-columns: 1fr; }
-  body.view .stage { height: calc(100vh - 100px); }
+  body.view .stage { height: calc(100vh - 44px); }
   body.view canvas#cloud { cursor: default !important; }
 
   @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } .toast { transition: none; } }
@@ -409,7 +411,7 @@ function layoutAndDraw() {
   const list = [...state.counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, state.maxWords);
   if (!list.length) {
     state.placed = [];
-    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
     if (state.features.length) showEmpty("Nothing to show yet", "Every word was filtered out. Lower the shortest-word setting or clear the hidden-words list.");
     else showEmpty("Nothing to show yet", "Contributions will appear here as they come in.");
     return;
@@ -465,6 +467,8 @@ function layoutAndDraw() {
 
 function drawWords(W, H, progress = 1) {
   ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, W, H);
   const family = getComputedStyle(document.documentElement).getPropertyValue("--font-display");
   const n = state.placed.length;
   state.placed.forEach((p, i) => {
